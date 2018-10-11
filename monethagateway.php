@@ -12,7 +12,6 @@ if (!defined('_PS_VERSION_')) {
 class Monethagateway extends PaymentModule
 {
     const DISPLAY_NAME = 'Monetha Gateway';
-
     const COLOR = '#00e882';
 
     public function __construct()
@@ -31,7 +30,7 @@ class Monethagateway extends PaymentModule
         parent::__construct();
 
         $this->displayName = $this->l('Monetha Gateway');
-        $this->description = $this->l('lorem ipsum dolor sit met');
+        $this->description = $this->l('Monetha payment gateway');
 
         $this->ps_versions_compliancy = array('min' => '1.7', 'max' => _PS_VERSION_);
     }
@@ -42,8 +41,7 @@ class Monethagateway extends PaymentModule
      */
     public function install()
     {
-        if (extension_loaded('curl') == false)
-        {
+        if (extension_loaded('curl') == false) {
             $this->_errors[] = $this->l('You have to enable the cURL extension on your server to install this module');
             return false;
         }
@@ -57,7 +55,20 @@ class Monethagateway extends PaymentModule
 
         return parent::install() &&
             $this->registerHook('paymentOptions') &&
-            $this->registerHook('paymentReturn');
+            $this->registerHook('paymentReturn') &&
+            $this->registerHook('actionOrderStatusPostUpdate');
+    }
+
+    public function hookActionOrderStatusPostUpdate($params)
+    {
+        // if ($params['newOrderStatus']->id == Configuration::get('PS_OS_CANCELED')) {
+        //     try {
+        //         $order = new Order($params['id_order']);
+        //         if ($order->module == 'monethagateway') {
+        //         }
+        //     } catch (\Exception $ex) {
+        //     }
+        // }
     }
 
     public function uninstall()
@@ -74,7 +85,8 @@ class Monethagateway extends PaymentModule
     /**
      * @throws PrestaShopDatabaseException
      */
-    private function create_order_state() {
+    private function create_order_state()
+    {
         $db = Db::getInstance();
 
         $db->insert('order_state', array(
@@ -95,7 +107,8 @@ class Monethagateway extends PaymentModule
         ));
     }
 
-    private function delete_order_state() {
+    private function delete_order_state()
+    {
         $db = Db::getInstance();
         $order_state_id = Configuration::get(Config::ORDER_STATUS);
 
@@ -103,7 +116,8 @@ class Monethagateway extends PaymentModule
         $db->delete('order_state', "id_order_state = $order_state_id", 1);
     }
 
-    private function copy_email_templates() {
+    private function copy_email_templates()
+    {
         $source = _PS_MODULE_DIR_ . $this->name . '/mails/en/' . $this->name;
         $destination = _PS_MAIL_DIR_ . 'en/' . $this->name;
 
@@ -120,7 +134,8 @@ class Monethagateway extends PaymentModule
         }
     }
 
-    private function delete_email_templates() {
+    private function delete_email_templates()
+    {
         $path = _PS_MAIL_DIR_ . 'en/' . $this->name;
 
         $txt_template_path = $path . '.txt';
@@ -146,7 +161,7 @@ class Monethagateway extends PaymentModule
 
         try {
             $conf = Config::get_configuration();
-        } catch(\Exception $e) {
+        } catch (\Exception $e) {
             return;
         }
 
@@ -221,7 +236,7 @@ class Monethagateway extends PaymentModule
         $output = null;
         try {
             $conf = Config::get_configuration();
-        } catch(\Exception $e) {
+        } catch (\Exception $e) {
             $output .= $this->displayError('Current configuration error: ' . $this->l($e->getMessage()));
         }
 
@@ -277,7 +292,7 @@ class Monethagateway extends PaymentModule
 
         $fields_form[0]['form'] = [
             'legend' => [
-                'title' => $this->l( self::DISPLAY_NAME .' Settings'),
+                'title' => $this->l(self::DISPLAY_NAME .' Settings'),
             ],
             'input' => [
                 [
@@ -296,14 +311,14 @@ class Monethagateway extends PaymentModule
                 ],
                 [
                     'type' => 'text',
-                    'name' => Config::PARAM_MERCHANT_KEY,
-                    'label' => $this->l($labels[Config::PARAM_MERCHANT_KEY]),
+                    'name' => Config::PARAM_MERCHANT_SECRET,
+                    'label' => $this->l($labels[Config::PARAM_MERCHANT_SECRET]),
                     'required' => true,
                 ],
                 [
                     'type' => 'text',
-                    'name' => Config::PARAM_MERCHANT_SECRET,
-                    'label' => $this->l($labels[Config::PARAM_MERCHANT_SECRET]),
+                    'name' => Config::PARAM_MONETHA_API_KEY,
+                    'label' => $this->l($labels[Config::PARAM_MONETHA_API_KEY]),
                     'required' => true,
                 ],
             ],
@@ -314,21 +329,21 @@ class Monethagateway extends PaymentModule
         ];
 
         $helper->fields_value = $conf;
-
         return $output . $helper->generateForm($fields_form);
     }
 
-    private function get_form_values() {
+    private function get_form_values()
+    {
         $enabled = Tools::getValue(Config::PARAM_ENABLED);
         $test_mode = Tools::getValue(Config::PARAM_TEST_MODE);
-        $merchant_key = Tools::getValue(Config::PARAM_MERCHANT_KEY);
-        $merchant_secret = Tools::getValue(Config::PARAM_MERCHANT_SECRET);
+        $merchantSecret = Tools::getValue(Config::PARAM_MERCHANT_SECRET);
+        $monethaApiKey = Tools::getValue(Config::PARAM_MONETHA_API_KEY);
 
         return [
             Config::PARAM_ENABLED => $enabled,
             Config::PARAM_TEST_MODE => $test_mode,
-            Config::PARAM_MERCHANT_KEY => $merchant_key,
-            Config::PARAM_MERCHANT_SECRET => $merchant_secret,
+            Config::PARAM_MERCHANT_SECRET => $merchantSecret,
+            Config::PARAM_MONETHA_API_KEY => $monethaApiKey,
         ];
     }
 
@@ -336,16 +351,14 @@ class Monethagateway extends PaymentModule
     {
         $output = null;
 
-        if (Tools::isSubmit('submit'.$this->name))
-        {
+        if (Tools::isSubmit('submit'.$this->name)) {
             $form_values = $this->get_form_values();
 
             try {
                 Config::validate($form_values);
                 Configuration::updateValue($this->name, json_encode($form_values));
                 $output .= $this->displayConfirmation($this->l('Settings updated'));
-
-            } catch(\Exception $e) {
+            } catch (\Exception $e) {
                 $output .= $this->displayError($this->l($e->getMessage()));
             }
         }

@@ -1,32 +1,11 @@
 <?php
-/*
-* 2007-2015 PrestaShop
-*
-* NOTICE OF LICENSE
-*
-* This source file is subject to the Academic Free License (AFL 3.0)
-* that is bundled with this package in the file LICENSE.txt.
-* It is also available through the world-wide-web at this URL:
-* http://opensource.org/licenses/afl-3.0.php
-* If you did not receive a copy of the license and are unable to
-* obtain it through the world-wide-web, please send an email
-* to license@prestashop.com so we can send you a copy immediately.
-*
-* DISCLAIMER
-*
-* Do not edit or add to this file if you wish to upgrade PrestaShop to newer
-* versions in the future. If you wish to customize PrestaShop for your
-* needs please refer to http://www.prestashop.com for more information.
-*
-*  @author PrestaShop SA <contact@prestashop.com>
-*  @copyright  2007-2015 PrestaShop SA
-*  @license    http://opensource.org/licenses/afl-3.0.php  Academic Free License (AFL 3.0)
-*  International Registered Trademark & Property of PrestaShop SA
-*/
+
+require_once(__DIR__ . './../../Services/GatewayService.php');
 
 use Monetha\OrderAdapter;
 use Monetha\AuthorizationRequest;
 use Monetha\Config;
+use Monetha\Services\GatewayService;
 
 /**
  * @since 1.5.0
@@ -42,6 +21,13 @@ class MonethagatewayValidationModuleFrontController extends ModuleFrontControlle
          * @var $this_module \Monethagateway
          */
         $this_module = $this->module;
+
+        $conf = Config::get_configuration();
+
+        $testMode = $conf[Config::PARAM_TEST_MODE];
+        $merchantSecret = $conf[Config::PARAM_MERCHANT_SECRET];
+        $monethaApiKey = $conf[Config::PARAM_MONETHA_API_KEY];
+        $gatewayService = new GatewayService($merchantSecret, $monethaApiKey, $testMode);
 
         $cart = $this->context->cart;
         if ($cart->id_customer == 0 || $cart->id_address_delivery == 0 || $cart->id_address_invoice == 0 || !$this_module->active) {
@@ -71,25 +57,24 @@ class MonethagatewayValidationModuleFrontController extends ModuleFrontControlle
         $orderAdapter = new OrderAdapter($cart, $this->context->currency->iso_code, _PS_BASE_URL_);
 
         $authorizationRequest = new AuthorizationRequest();
-        $deal = $authorizationRequest->createDeal($orderAdapter, $cart->id);
-        $paymentUrl = $authorizationRequest->getPaymentUrl($deal);
+        $offerBody = $gatewayService->prepareOfferBody($orderAdapter, $cart->id);
+        $paymentUrl = $authorizationRequest->getPaymentUrl($offerBody);
 
-         $customer = new Customer($cart->id_customer);
-         if (!Validate::isLoadedObject($customer))
-             Tools::redirect('index.php?controller=order&step=1');
+        $customer = new Customer($cart->id_customer);
+        if (!Validate::isLoadedObject($customer)) {
+            Tools::redirect('index.php?controller=order&step=1');
+        }
 
-         $currency = $this->context->currency;
-         $total = (float)$cart->getOrderTotal(true, Cart::BOTH);
-         $mailVars = array(
+        $currency = $this->context->currency;
+        $total = (float)$cart->getOrderTotal(true, Cart::BOTH);
+        $mailVars = array(
              '{bankwire_owner}' => Configuration::get('BANK_WIRE_OWNER'),
              '{bankwire_details}' => nl2br(Configuration::get('BANK_WIRE_DETAILS')),
              '{bankwire_address}' => nl2br(Configuration::get('BANK_WIRE_ADDRESS')),
              '{payment_url}' => $paymentUrl,
          );
 
-        $this_module->validateOrder($cart->id, Configuration::get(Config::ORDER_STATUS), $total, $this_module->displayName, NULL, $mailVars, (int)$currency->id, false, $customer->secure_key);
-         //Tools::redirect('index.php?controller=order-confirmation&id_cart='.$cart->id.'&id_module='.$this_module->id.'&id_order='.$this_module->currentOrder.'&key='.$customer->secure_key);
-
+        $this_module->validateOrder($cart->id, Configuration::get(Config::ORDER_STATUS), $total, $this_module->displayName, null, $mailVars, (int)$currency->id, false, $customer->secure_key);
         Tools::redirectLink($paymentUrl);
     }
 }
