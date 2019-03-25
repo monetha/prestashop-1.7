@@ -58,7 +58,31 @@ class MonethagatewayValidationModuleFrontController extends ModuleFrontControlle
 
         $authorizationRequest = new AuthorizationRequest();
         $offerBody = $gatewayService->prepareOfferBody($orderAdapter, $cart->id);
-        $paymentUrl = $authorizationRequest->getPaymentUrl($offerBody);
+        $customerDetails = $this->context->customer;
+
+        $address = new Address($this->context->cart->id_address_delivery);
+
+        $iso_code = Country::getIsoById($address->id_country);
+
+        $clientBody = array(
+            'contact_name' => $address->firstname.' '.$address->lastname,
+            'contact_email' => $customerDetails->email,
+            'contact_phone_number' => $address->phone,
+            'country_code_iso' => $iso_code,
+            'address' => $address->address1,
+            'city' => $address->city,
+            'zipcode' => $address->postcode
+        );
+
+        $paymentData = $authorizationRequest->getPaymentUrl($offerBody, $clientBody);
+
+        if(isset($paymentData['error'])) {
+            $this->errors[] = $paymentData['message'];
+            $this->redirectWithNotifications($this->context->link->getPageLink('order', true, null, array('step' => '3')));
+        }
+
+        $paymentUrl = $paymentData['payment_url'];
+        $monethaId = $paymentData['monetha_id'];
 
         $customer = new Customer($cart->id_customer);
         if (!Validate::isLoadedObject($customer)) {
@@ -75,6 +99,9 @@ class MonethagatewayValidationModuleFrontController extends ModuleFrontControlle
          );
 
         $this_module->validateOrder($cart->id, Configuration::get(Config::ORDER_STATUS), $total, $this_module->displayName, null, $mailVars, (int)$currency->id, false, $customer->secure_key);
+
+        Db::getInstance()->insert("monetha_gateway",array('order_id'=>$this->module->currentOrder,'monetha_id'=>$monethaId));
+        
         Tools::redirectLink($paymentUrl);
     }
 }

@@ -45,7 +45,10 @@ class GatewayService
                 'amount_fiat' => $price,
             ];
             $itemsPrice += $price * $quantity;
-            $items[] = $li;
+            if($price > 0)
+            {
+                $items[] = $li;
+            }
         }
 
         $itemsPrice = round($itemsPrice, 2);
@@ -58,7 +61,11 @@ class GatewayService
             'quantity' => 1,
             'amount_fiat' => round($grandTotal - $itemsPrice, 2),
         ];
-        $items[] = $shipping;
+
+        if($shipping['amount_fiat'] > 0)
+        {
+            $items[] = $shipping;
+        }
 
         $deal = array(
             'deal' => array(
@@ -86,7 +93,11 @@ class GatewayService
         $apiUrl = $apiUrl . 'v1/merchants/' . $merchantId .'/secret';
 
         $response = HttpService::callApi($apiUrl, 'GET', null, ["Authorization: Bearer " . $this->mthApiKey]);
-        return ($response && $response->integration_secret && $response->integration_secret == $this->merchantSecret);
+        if(isset($response->integration_secret))
+        {
+            return $response->integration_secret == $this->merchantSecret;
+        }
+        return false;
     }
 
     public function configurationIsValid()
@@ -138,6 +149,25 @@ class GatewayService
         return HttpService::callApi($apiUrl, 'POST', $body, ["Authorization: Bearer " . $this->mthApiKey]);
     }
 
+    public function createClient($clientBody)
+    {
+        $clientId = 0;
+        if(isset($clientBody['contact_phone_number']) && $clientBody['contact_phone_number'])
+        {
+            $apiUrl = $this->getApiUrl();
+            $apiUrl = $apiUrl . 'v1/clients';
+
+            $clientResponse = HttpService::callApi($apiUrl, 'POST', $clientBody, ["Authorization: Bearer " . $this->mthApiKey]);
+            if(isset($clientResponse->client_id)) {
+                $clientId = $clientResponse->client_id;
+            } else {
+                return $clientResponse;
+            }
+        }
+
+        return $clientId;
+    }
+
     public function createOffer($offerBody)
     {
         $apiUrl = $this->getApiUrl();
@@ -165,6 +195,9 @@ class GatewayService
                     case EventType::FINALIZED:
                         $this::finalizeOrder($order);
                         break;
+                    case EventType::MONEY_AUTHORIZED:
+                        $this::finalizeOrderByCard($order);
+                        break;
                     default:
                         throw new \Exception('Bad action type');
                         break;
@@ -186,6 +219,14 @@ class GatewayService
     }
 
     public function finalizeOrder($order)
+    {
+        $history = new \OrderHistory();
+        $history->id_order = (int)$order->id;
+        $history->changeIdOrderState(2, (int)($order->id), true);
+        $history->save();
+    }
+
+    public function finalizeOrderByCard($order)
     {
         $history = new \OrderHistory();
         $history->id_order = (int)$order->id;

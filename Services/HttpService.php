@@ -18,7 +18,13 @@ class HttpService
         ];
 
         if ($method !== 'GET' && $body) {
-            $options[CURLOPT_POSTFIELDS] = json_encode($body, JSON_NUMERIC_CHECK);
+            $client_uri = @end(explode('/',$uri));
+            if($client_uri == 'clients') {
+                $options[CURLOPT_POSTFIELDS] = json_encode($body);
+            } else {
+                $options[CURLOPT_POSTFIELDS] = json_encode($body, JSON_NUMERIC_CHECK);
+            }
+
             $options[CURLOPT_CUSTOMREQUEST] = $method;
         }
 
@@ -26,14 +32,44 @@ class HttpService
 
         $res = curl_exec($chSign);
         $error = curl_error($chSign);
+        $resStatus = curl_getinfo($chSign, CURLINFO_HTTP_CODE);
+
+        if (($resStatus >= 400)
+            && isset($res)
+            && isset(json_decode($res)->code)) {
+            if(json_decode($res)->code == 'AMOUNT_TOO_BIG') {
+                return 'AMOUNT_TOO_BIG';
+            }
+            if(json_decode($res)->code == 'AMOUNT_TOO_SMALL') {
+                return 'AMOUNT_TOO_SMALL';
+            }
+            if(json_decode($res)->code == 'INVALID_PHONE_NUMBER') {
+                return 'INVALID_PHONE_NUMBER';
+            }
+            if(json_decode($res)->code == 'AUTH_TOKEN_INVALID') {
+                return 'AUTH_TOKEN_INVALID';
+            }
+            if(json_decode($res)->code == 'INTERNAL_ERROR') {
+                return 'INTERNAL_ERROR';
+            }
+            if(json_decode($res)->code == 'UNSUPPORTED_CURRENCY') {
+                return 'UNSUPPORTED_CURRENCY';
+            }
+            if(json_decode($res)->code == 'PROCESSOR_MISSING') {
+                return 'PROCESSOR_MISSING';
+            }
+            if(json_decode($res)->code == 'INVALID_PHONE_COUNTRY_CODE') {
+                return 'INVALID_PHONE_COUNTRY_CODE';
+            }
+        }
 
         if ($error) {
-            throw new \Exception($error);
+            return 'INTERNAL_ERROR';
         }
 
         $resStatus = curl_getinfo($chSign, CURLINFO_HTTP_CODE);
         if ($resStatus < 200 || $resStatus >= 300) {
-            throw new \Exception($res);
+            return 'INTERNAL_ERROR';
         }
 
         $resJson = json_decode($res);

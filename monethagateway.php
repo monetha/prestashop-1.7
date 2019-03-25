@@ -1,9 +1,12 @@
 <?php
 
 require __DIR__ . '/vendor/autoload.php';
+require_once(__DIR__ . '/Services/GatewayService.php');
+
 
 use PrestaShop\PrestaShop\Core\Payment\PaymentOption;
 use Monetha\Config;
+use Monetha\Services\GatewayService;
 
 if (!defined('_PS_VERSION_')) {
     exit;
@@ -33,6 +36,19 @@ class Monethagateway extends PaymentModule
         $this->description = $this->l('Monetha payment gateway');
 
         $this->ps_versions_compliancy = array('min' => '1.7', 'max' => _PS_VERSION_);
+
+
+        Db::getInstance()->execute("CREATE TABLE IF NOT EXISTS `"._DB_PREFIX_."monetha_gateway` (
+          `id` int(11) NOT NULL,
+          `order_id` int(11) NOT NULL,
+          `monetha_id` int(11) NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+        ALTER TABLE `"._DB_PREFIX_."monetha_gateway`
+          ADD PRIMARY KEY (`id`);
+
+        ALTER TABLE `"._DB_PREFIX_."monetha_gateway`
+          MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;");
     }
 
     /**
@@ -61,14 +77,23 @@ class Monethagateway extends PaymentModule
 
     public function hookActionOrderStatusPostUpdate($params)
     {
-        // if ($params['newOrderStatus']->id == Configuration::get('PS_OS_CANCELED')) {
-        //     try {
-        //         $order = new Order($params['id_order']);
-        //         if ($order->module == 'monethagateway') {
-        //         }
-        //     } catch (\Exception $ex) {
-        //     }
-        // }
+        if ($params['newOrderStatus']->id == Configuration::get('PS_OS_CANCELED')) {
+             try {
+                 $order = new Order($params['id_order']);
+                 if ($order->module == 'monethagateway') {
+                    $data = Db::getInstance()->executeS("SELECT * FROM `"._DB_PREFIX_."monetha_gateway` WHERE order_id='".pSQL($params['id_order'])."'");
+
+                    $conf = Config::get_configuration();
+
+                    $testMode = $conf[Config::PARAM_TEST_MODE];
+                    $merchantSecret = $conf[Config::PARAM_MERCHANT_SECRET];
+                    $monethaApiKey = $conf[Config::PARAM_MONETHA_API_KEY];
+                    $gateway = new GatewayService($merchantSecret, $monethaApiKey, $testMode);
+                    $gateway->cancelExternalOrder($data[0]['monetha_id']);
+                 }
+             } catch (\Exception $ex) {
+             }
+        }
     }
 
     public function uninstall()
