@@ -1,6 +1,6 @@
 <?php
 
-namespace Monetha\Consts;
+namespace Monetha\Constants;
 
 class Resource
 {

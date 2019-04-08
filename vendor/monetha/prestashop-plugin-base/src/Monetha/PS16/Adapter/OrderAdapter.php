@@ -1,15 +1,19 @@
 <?php
 
-namespace Monetha;
+namespace Monetha\PS16\Adapter;
 
-class OrderAdapter implements OrderAdapterInterface {
+use Monetha\Adapter\CallbackUrlInterface;
+use Monetha\Adapter\InterceptorInterface;
+use Monetha\Adapter\OrderAdapterInterface;
+
+class OrderAdapter implements OrderAdapterInterface, CallbackUrlInterface {
     /**
      * @var \Cart
      */
     private $cart;
 
     /**
-     * @var array
+     * @var InterceptorInterface[]
      */
     private $items = [];
 
@@ -34,6 +38,9 @@ class OrderAdapter implements OrderAdapterInterface {
         }
     }
 
+    /**
+     * @return InterceptorInterface[]
+     */
     public function getItems() {
         return $this->items;
     }
@@ -48,5 +55,18 @@ class OrderAdapter implements OrderAdapterInterface {
 
     public function getBaseUrl() {
         return $this->baseUrl;
+    }
+
+    /**
+     * @return mixed
+     */
+    public function getCartId()
+    {
+        return $this->cart->id;
+    }
+
+    public function getCallbackUrl()
+    {
+        return $this->getBaseUrl() . '/modules/monethagateway/webservices/actions.php';
     }
 }

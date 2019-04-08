@@ -4,7 +4,7 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInit874cbe4fd3c85f4693b38707c77d9f31
+class ComposerStaticInita0585d2954ad0fc8aff8160e790126b8
 {
     public static $prefixLengthsPsr4 = array (
         'M' => 
@@ -16,15 +16,16 @@ class ComposerStaticInit874cbe4fd3c85f4693b38707c77d9f31
     public static $prefixDirsPsr4 = array (
         'Monetha\\' => 
         array (
-            0 => __DIR__ . '/../..' . '/Monetha',
+            0 => __DIR__ . '/..' . '/monetha/payment-plugin-php-sdk/src/Monetha',
+            1 => __DIR__ . '/..' . '/monetha/prestashop-plugin-base/src/Monetha',
         ),
     );
 
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInit874cbe4fd3c85f4693b38707c77d9f31::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInit874cbe4fd3c85f4693b38707c77d9f31::$prefixDirsPsr4;
+            $loader->prefixLengthsPsr4 = ComposerStaticInita0585d2954ad0fc8aff8160e790126b8::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInita0585d2954ad0fc8aff8160e790126b8::$prefixDirsPsr4;
 
         }, null, ClassLoader::class);
     }

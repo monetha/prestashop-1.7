@@ -1,11 +1,13 @@
 <?php
 
-require_once(__DIR__ . './../../Services/GatewayService.php');
+require __DIR__ . '/../../vendor/autoload.php';
 
-use Monetha\OrderAdapter;
-use Monetha\AuthorizationRequest;
 use Monetha\Config;
+use Monetha\Response\Exception\ApiException;
+use Monetha\PS16\Adapter\OrderAdapter;
+use Monetha\PS16\Adapter\ClientAdapter;
 use Monetha\Services\GatewayService;
+use Monetha\PS16\Adapter\ConfigAdapter;
 
 /**
  * @since 1.5.0
@@ -22,16 +24,11 @@ class MonethagatewayValidationModuleFrontController extends ModuleFrontControlle
          */
         $this_module = $this->module;
 
-        $conf = Config::get_configuration();
-
-        $testMode = $conf[Config::PARAM_TEST_MODE];
-        $merchantSecret = $conf[Config::PARAM_MERCHANT_SECRET];
-        $monethaApiKey = $conf[Config::PARAM_MONETHA_API_KEY];
-        $gatewayService = new GatewayService($merchantSecret, $monethaApiKey, $testMode);
-
         $cart = $this->context->cart;
         if ($cart->id_customer == 0 || $cart->id_address_delivery == 0 || $cart->id_address_invoice == 0 || !$this_module->active) {
             Tools::redirect('index.php?controller=order&step=1');
+
+            return;
         }
 
         // Check that this payment option is still available in case the customer changed his address just before the end of the checkout process
@@ -51,57 +48,67 @@ class MonethagatewayValidationModuleFrontController extends ModuleFrontControlle
             'params' => $_REQUEST,
         ]);
 
-        //$this->setTemplate('payment_return.tpl');
         $this->setTemplate('module:monethagateway/views/templates/front/payment_return.tpl');
-
-        $orderAdapter = new OrderAdapter($cart, $this->context->currency->iso_code, _PS_BASE_URL_);
-
-        $authorizationRequest = new AuthorizationRequest();
-        $offerBody = $gatewayService->prepareOfferBody($orderAdapter, $cart->id);
-        $customerDetails = $this->context->customer;
-
-        $address = new Address($this->context->cart->id_address_delivery);
-
-        $iso_code = Country::getIsoById($address->id_country);
-
-        $clientBody = array(
-            'contact_name' => $address->firstname.' '.$address->lastname,
-            'contact_email' => $customerDetails->email,
-            'contact_phone_number' => $address->phone,
-            'country_code_iso' => $iso_code,
-            'address' => $address->address1,
-            'city' => $address->city,
-            'zipcode' => $address->postcode
-        );
-
-        $paymentData = $authorizationRequest->getPaymentUrl($offerBody, $clientBody);
-
-        if(isset($paymentData['error'])) {
-            $this->errors[] = $paymentData['message'];
-            $this->redirectWithNotifications($this->context->link->getPageLink('order', true, null, array('step' => '3')));
-        }
-
-        $paymentUrl = $paymentData['payment_url'];
-        $monethaId = $paymentData['monetha_id'];
 
         $customer = new Customer($cart->id_customer);
         if (!Validate::isLoadedObject($customer)) {
             Tools::redirect('index.php?controller=order&step=1');
+
+            return;
         }
 
-        $currency = $this->context->currency;
-        $total = (float)$cart->getOrderTotal(true, Cart::BOTH);
-        $mailVars = array(
-             '{bankwire_owner}' => Configuration::get('BANK_WIRE_OWNER'),
-             '{bankwire_details}' => nl2br(Configuration::get('BANK_WIRE_DETAILS')),
-             '{bankwire_address}' => nl2br(Configuration::get('BANK_WIRE_ADDRESS')),
-             '{payment_url}' => $paymentUrl,
-         );
+        try {
+            $orderAdapter = new OrderAdapter($cart, $this->context->currency->iso_code, _PS_BASE_URL_);
 
-        $this_module->validateOrder($cart->id, Configuration::get(Config::ORDER_STATUS), $total, $this_module->displayName, null, $mailVars, (int)$currency->id, false, $customer->secure_key);
+            $address = new Address($this->context->cart->id_address_delivery);
+            $clientAdapter = new ClientAdapter($address, $this->context->customer);
 
-        Db::getInstance()->insert("monetha_gateway",array('order_id'=>$this->module->currentOrder,'monetha_id'=>$monethaId));
-        
+            $configAdapter = new ConfigAdapter(false);
+
+            $gatewayService = new GatewayService($configAdapter);
+
+            $executeOfferResponse = $gatewayService->getExecuteOfferResponse($orderAdapter, $clientAdapter);
+
+            $paymentUrl = $executeOfferResponse->getPaymentUrl();
+
+            $currency = $this->context->currency;
+            $total = (float)$cart->getOrderTotal(true, Cart::BOTH);
+            $mailVars = array(
+                '{bankwire_owner}' => Configuration::get('BANK_WIRE_OWNER'),
+                '{bankwire_details}' => nl2br(Configuration::get('BANK_WIRE_DETAILS')),
+                '{bankwire_address}' => nl2br(Configuration::get('BANK_WIRE_ADDRESS')),
+                '{payment_url}' => $paymentUrl,
+            );
+
+            Db::getInstance()->insert("monetha_gateway", array(
+                'monetha_id' => $executeOfferResponse->getOrderId(),
+                'payment_url' => $paymentUrl,
+                'cart_id' => $cart->id,
+            ));
+
+            $this_module->validateOrder($cart->id, Configuration::get(Config::ORDER_STATUS), $total, $this_module->displayName, null, $mailVars, (int)$currency->id, false, $customer->secure_key);
+
+        } catch (ApiException $e) {
+            $message = sprintf(
+                'Status code: %s, error: %s, message: %s',
+                $e->getApiStatusCode(),
+                $e->getApiErrorCode(),
+                $e->getMessage()
+            );
+            error_log($message);
+
+            $this->errors[] = $e->getFriendlyMessage();
+            $this->redirectWithNotifications($this->context->link->getPageLink('order', true, null, array('step' => '3')));
+
+            return;
+
+        } catch(\Exception $e) {
+            $this->errors[] = $e->getMessage();
+            $this->redirectWithNotifications($this->context->link->getPageLink('order', true, null, array('step' => '3')));
+
+            return;
+        }
+
         Tools::redirectLink($paymentUrl);
     }
 }

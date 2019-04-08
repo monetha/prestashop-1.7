@@ -1,7 +1,6 @@
 <?php
 
 require __DIR__ . '/vendor/autoload.php';
-require_once(__DIR__ . '/Services/GatewayService.php');
 
 
 use PrestaShop\PrestaShop\Core\Payment\PaymentOption;
@@ -36,19 +35,6 @@ class Monethagateway extends PaymentModule
         $this->description = $this->l('Monetha payment gateway');
 
         $this->ps_versions_compliancy = array('min' => '1.7', 'max' => _PS_VERSION_);
-
-
-        Db::getInstance()->execute("CREATE TABLE IF NOT EXISTS `"._DB_PREFIX_."monetha_gateway` (
-          `id` int(11) NOT NULL,
-          `order_id` int(11) NOT NULL,
-          `monetha_id` int(11) NOT NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
-
-        ALTER TABLE `"._DB_PREFIX_."monetha_gateway`
-          ADD PRIMARY KEY (`id`);
-
-        ALTER TABLE `"._DB_PREFIX_."monetha_gateway`
-          MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;");
     }
 
     /**
@@ -78,22 +64,47 @@ class Monethagateway extends PaymentModule
     public function hookActionOrderStatusPostUpdate($params)
     {
         if ($params['newOrderStatus']->id == Configuration::get('PS_OS_CANCELED')) {
-             try {
-                 $order = new Order($params['id_order']);
-                 if ($order->module == 'monethagateway') {
-                    $data = Db::getInstance()->executeS("SELECT * FROM `"._DB_PREFIX_."monetha_gateway` WHERE order_id='".pSQL($params['id_order'])."'");
+            try {
+                $order = new Order($params['id_order']);
+                if ($order->module != 'monethagateway') {
+                    return;
+                }
 
-                    $conf = Config::get_configuration();
+                $query = "SELECT * FROM `" . _DB_PREFIX_ . "monetha_gateway` WHERE order_id='" . pSQL($params['id_order']) . "' LIMIT 1";
+                $data = Db::getInstance()->executeS($query);
+                if (!$data) {
+                    error_log('Monetha gateway order id = ' . $params['id_order'] . ' not found.');
+                }
 
-                    $testMode = $conf[Config::PARAM_TEST_MODE];
-                    $merchantSecret = $conf[Config::PARAM_MERCHANT_SECRET];
-                    $monethaApiKey = $conf[Config::PARAM_MONETHA_API_KEY];
-                    $gateway = new GatewayService($merchantSecret, $monethaApiKey, $testMode);
-                    $gateway->cancelExternalOrder($data[0]['monetha_id']);
-                 }
-             } catch (\Exception $ex) {
-             }
+                $configAdapter = new \Monetha\PS16\Adapter\ConfigAdapter(true);
+                $gateway = new \Monetha\Services\GatewayService($configAdapter);
+
+                $row = reset($data);
+
+                $gateway->cancelExternalOrder($row['monetha_id']);
+            } catch (\Monetha\Response\Exception\ApiException $e) {
+                $message = sprintf(
+                    'Status code: %s, error: %s, message: %s',
+                    $e->getApiStatusCode(),
+                    $e->getApiErrorCode(),
+                    $e->getMessage()
+                );
+                error_log($message);
+
+            }  catch (\Exception $ex) {
+                error_log($ex->getMessage());
+            }
+
+            return;
         }
+
+        // the rest always happens during validation
+
+        /** @var Cart $cart */
+        $cart = $params['cart'];
+        $orderId = $params['id_order'];
+
+        $this->updateOrderByCartId($cart, $orderId);
     }
 
     public function uninstall()
@@ -130,6 +141,30 @@ class Monethagateway extends PaymentModule
             'name' => 'Awaiting Monetha payment',
             'template' => $this->name,
         ));
+
+        $tableName = _DB_PREFIX_ . 'monetha_gateway';
+
+        Db::getInstance()->execute("CREATE TABLE IF NOT EXISTS `$tableName` (
+          `id` int(11) NOT NULL,
+          `order_id` int(11) NOT NULL,
+          `monetha_id` int(11) NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+        ALTER TABLE `$tableName`
+          ADD PRIMARY KEY (`id`);
+
+        ALTER TABLE `$tableName`
+          MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;");
+
+        if (!$this->columnExists(_DB_NAME_, $tableName, 'cart_id')) {
+            $query = "ALTER TABLE `$tableName` ADD COLUMN `cart_id` INT(11) NOT NULL";
+            Db::getInstance()->execute($query);
+        }
+
+        if (!$this->columnExists(_DB_NAME_, $tableName, 'payment_url')) {
+            $query = "ALTER TABLE `$tableName` ADD COLUMN `payment_url` VARCHAR(512) NOT NULL";
+            Db::getInstance()->execute($query);
+        }
     }
 
     private function delete_order_state()
@@ -353,6 +388,15 @@ class Monethagateway extends PaymentModule
             ],
         ];
 
+        if (!isset($conf)) {
+            $conf = [
+                'enabled' => '1',
+                'testMode' => '1',
+                'merchantSecret' => 'MONETHA_SANDBOX_SECRET',
+                'monethaApiKey' => '',
+            ];
+        }
+
         $helper->fields_value = $conf;
         return $output . $helper->generateForm($fields_form);
     }
@@ -388,5 +432,32 @@ class Monethagateway extends PaymentModule
             }
         }
         return $output.$this->displayForm();
+    }
+
+    private function updateOrderByCartId(Cart $cart, $orderId) {
+        $orderId = pSQL($orderId);
+        $cartId = pSQL($cart->id);
+
+        $result = Db::getInstance()->update('monetha_gateway', ['order_id' => $orderId],"`cart_id` = '$cartId'");
+
+        return $result;
+    }
+
+    /**
+     * @param string $dbName
+     * @param string $tableName
+     * @param string $columnName
+     * @throws PrestaShopDatabaseException
+     *
+     * @return bool
+     */
+    private function columnExists($dbName, $tableName, $columnName) {
+        $query = "SELECT `COLUMN_NAME` 
+                  FROM `information_schema`.`COLUMNS` 
+                  WHERE TABLE_SCHEMA='$dbName' 
+                  AND TABLE_NAME='$tableName'";
+        $data = Db::getInstance()->executeS($query);
+
+        return $data && in_array($columnName, array_column($data, 'COLUMN_NAME'));
     }
 }

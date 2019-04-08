@@ -6,5 +6,5 @@ $vendorDir = dirname(dirname(__FILE__));
 $baseDir = dirname($vendorDir);
 
 return array(
-    'Monetha\\' => array($baseDir . '/Monetha'),
+    'Monetha\\' => array($vendorDir . '/monetha/payment-plugin-php-sdk/src/Monetha', $vendorDir . '/monetha/prestashop-plugin-base/src/Monetha'),
 );

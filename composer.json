@@ -1,0 +1,29 @@
+{
+    "name": "monetha/prestashop-1.7",
+    "authors": [
+        {
+            "name": "Alexander Hitrov",
+            "email": "aleksander.hitrov@betgames.tv"
+        }
+    ],
+    "config": {
+        "github-oauth": {
+            "github.com": "377a21fc6d5ecd2cc414dcb23cccf9001b15a4bc"
+        }
+    },
+    "require": {
+        "ext-json": "*",
+        "monetha/prestashop-plugin-base": "dev-master",
+        "monetha/payment-plugin-php-sdk": "dev-master"
+    },
+    "repositories": [
+        {
+            "url": "git@gitlab.com:monetha/prestashop-plugin-base.git",
+            "type": "vcs"
+        },
+        {
+            "url": "https://gitlab.com/monetha/payment-plugin-php-sdk.git",
+            "type": "vcs"
+        }
+    ]
+}

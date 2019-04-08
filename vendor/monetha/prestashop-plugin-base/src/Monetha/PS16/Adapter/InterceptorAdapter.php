@@ -1,8 +1,10 @@
 <?php
 
-namespace Monetha;
+namespace Monetha\PS16\Adapter;
 
-class InterceptorAdapter implements Interceptor {
+use Monetha\Adapter\InterceptorInterface;
+
+class InterceptorAdapter implements InterceptorInterface {
     /**
      * @var array
      */

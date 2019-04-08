@@ -2,12 +2,14 @@
 
 namespace Monetha;
 
-require_once(__DIR__ . './../Services/GatewayService.php');
-
+use Monetha\Adapter\ConfigAdapterInterface;
+use Monetha\ConfigAdapterTrait;
 use Monetha\Services\GatewayService;
 
-class Config
+class Config implements ConfigAdapterInterface
 {
+    use ConfigAdapterTrait;
+
     const PARAM_ENABLED = 'enabled';
     const PARAM_TEST_MODE = 'testMode';
     const PARAM_MERCHANT_SECRET = 'merchantSecret';
@@ -28,15 +30,18 @@ class Config
     }
 
     /**
+     * @param bool $validateConfig
      * @return mixed
      * @throws \Exception
      */
-    public static function get_configuration()
+    public static function get_configuration($validateConfig = true)
     {
         $confJson = \Configuration::get('monethagateway');
         $conf = json_decode($confJson, true);
 
-        self::validate($conf);
+        if ($validateConfig) {
+            self::validate($conf, $validateConfig);
+        }
 
         return $conf;
     }
@@ -55,10 +60,10 @@ class Config
 
     /**
      * @param $form_values
-     *
+     * @param bool $validateConfig
      * @throws \Exception
      */
-    public static function validate($form_values)
+    public static function validate($form_values, $validateConfig = true)
     {
         $enabled = $form_values[self::PARAM_ENABLED];
         $testMode = $form_values[self::PARAM_TEST_MODE];
@@ -90,10 +95,17 @@ class Config
             throw new \Exception('Invalid ' . self::$labels[self::PARAM_MONETHA_API_KEY] . ' parameter');
         }
 
-        // Validate monetha api key with backend
-        $gatewayService = new GatewayService($merchantSecret, $monethaApiKey, $testMode);
-        if (!$gatewayService->validateApiKey()) {
-            throw new \Exception('Merchant secret or Monetha Api Key is not valid!');
+        if ($validateConfig) {
+            $configAdapter = new self();
+            $configAdapter->testMode = $testMode;
+            $configAdapter->merchantSecret = $merchantSecret;
+            $configAdapter->monethaApiKey = $monethaApiKey;
+
+            // Validate monetha api key with backend
+            $gatewayService = new GatewayService($configAdapter);
+            if (!$gatewayService->validateApiKey()) {
+                throw new \Exception('Merchant secret or Monetha Api Key is not valid!');
+            }
         }
     }
 }
