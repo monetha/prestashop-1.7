@@ -3,14 +3,9 @@
     "authors": [
         {
             "name": "Alexander Hitrov",
-            "email": "aleksander.hitrov@betgames.tv"
+            "email": "alexander.hitrov@monetha.io"
         }
     ],
-    "config": {
-        "github-oauth": {
-            "github.com": "377a21fc6d5ecd2cc414dcb23cccf9001b15a4bc"
-        }
-    },
     "require": {
         "ext-json": "*",
         "monetha/prestashop-plugin-base": "dev-master",
