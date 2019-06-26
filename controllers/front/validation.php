@@ -58,7 +58,9 @@ class MonethagatewayValidationModuleFrontController extends ModuleFrontControlle
         }
 
         try {
-            $orderAdapter = new OrderAdapter($cart, $this->context->currency->iso_code, _PS_BASE_URL_);
+            $discountAmount = $cart->getDiscountSubtotalWithoutGifts();
+            $returnUri = 'index.php?controller=order-confirmation&id_cart='.$cart->id.'&id_module='.$this->module->id.'&id_order='.$this->module->currentOrder.'&key='.$customer->secure_key;
+            $orderAdapter = new OrderAdapter($cart, $this->context->currency->iso_code, _PS_BASE_URL_, $discountAmount, $returnUri);
 
             $address = new Address($this->context->cart->id_address_delivery);
             $clientAdapter = new ClientAdapter($address, $this->context->customer);
